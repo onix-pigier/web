@@ -18,7 +18,7 @@ const avisSchema = new mongoose.Schema(
       required: true,
     },
     age: {
-      type: Number,
+      type: String,
       required: false,
     },
     numero: {
@@ -30,7 +30,7 @@ const avisSchema = new mongoose.Schema(
       ref: "Service",
       required: true,
     },
-    fonction: {
+    commune: {
       type: String,
       enum: [
         "Abobo",
@@ -67,7 +67,7 @@ const avisSchema = new mongoose.Schema(
       ],
       required: false,
     },
-    commune: {
+    fonction: {
       type: String,
       required: false,
     },
@@ -84,7 +84,7 @@ const avisSchema = new mongoose.Schema(
     },
     satisfaction: {
       type: String,
-      enum: ["Satisfait", "Mécontent"],
+      enum: ["Satisfait","Moyen", "Mécontent"],
       required: true,
     },
     commentaire: {

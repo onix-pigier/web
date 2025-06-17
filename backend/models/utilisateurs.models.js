@@ -16,8 +16,7 @@ const utilisateurSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["admin", "directrice"],
-      default: "admin",
+      enum: ["admin", "Responsable"],
       required: true,
     },
     mot_de_passe: {
@@ -26,7 +25,7 @@ const utilisateurSchema = new mongoose.Schema(
     },
     verify_email: {
       type: Boolean,
-      default: false,
+      default: true,
     },
     refreshToken: {
       type: String,

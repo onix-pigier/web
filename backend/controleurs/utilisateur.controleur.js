@@ -6,16 +6,15 @@ import generateRefreshToken from "../utiles/generaterefreshToken.js";
 import bcryptjs from "bcryptjs";
 import generateOtp from "../utiles/generateOtp.js";
 import forgotmotdepassTemplate from "../utiles/forgotmotdepassTemplate.js";
-import jwt from 'jsonwebtoken'
+import jwt from 'jsonwebtoken';
 
 export async function newUserControleur(req, res) {
   try {
-    const { nom, email, mot_de_passe } = req.body;
+    const { nom, email, mot_de_passe, role } = req.body;
 
-    if (!nom || !email || !mot_de_passe) {
+    if (!nom || !email || !mot_de_passe || !role) {
       return res.status(400).json({
-        message: "Fournir nom, email et mot de passe",
-        error: true,
+        message: "Fournir nom, email, mot de passe et rôle",
         success: false
       });
     }
@@ -27,7 +26,15 @@ export async function newUserControleur(req, res) {
     if (!emailRegex.test(email)) {
       return res.status(400).json({
         message: "Format d'email invalide",
-        error: true,
+        success: false
+      });
+    }
+
+    // Vérification du rôle
+    const rolesValides = ['admin', 'Responsable'];
+    if (!rolesValides.includes(role)) {
+      return res.status(400).json({
+        message: "Rôle invalide",
         success: false
       });
     }
@@ -37,7 +44,6 @@ export async function newUserControleur(req, res) {
     if (utilisateur) {
       return res.status(409).json({
         message: "Email déjà utilisé",
-        error: true,
         success: false
       });
     }
@@ -49,6 +55,7 @@ export async function newUserControleur(req, res) {
       nom,
       email,
       mot_de_passe: hashMotDePasse,
+      role,
       emailVerified: false
     });
 
@@ -57,7 +64,7 @@ export async function newUserControleur(req, res) {
     const verifieEmailUrl = `${process.env.FRONTEND_URL}/verifie-email?code=${utilisateurSauvegarde._id}`;
 
     await envoiEmail({
-      to: email,
+      sendTo: email,
       subject: "Vérification de l'email - Onix",
       html: verifieEmail({
         nom,
@@ -67,20 +74,18 @@ export async function newUserControleur(req, res) {
 
     return res.status(201).json({
       message: "Utilisateur enregistré avec succès",
-      error: false,
       success: true,
       data: {
         id: utilisateurSauvegarde._id,
         nom: utilisateurSauvegarde.nom,
-        email: utilisateurSauvegarde.email
+        email: utilisateurSauvegarde.email,
+        role: utilisateurSauvegarde.role
       }
     });
-
   } catch (error) {
     console.error("Erreur dans newUserControleur:", error);
     return res.status(500).json({
       message: "Erreur serveur lors de la création de l'utilisateur",
-      error: true,
       success: false
     });
   }
@@ -93,7 +98,6 @@ export async function verifieEmailControleur(req, res) {
     if (!code) {
       return res.status(400).json({
         message: "Code de vérification requis",
-        error: true,
         success: false
       });
     }
@@ -103,7 +107,6 @@ export async function verifieEmailControleur(req, res) {
     if (!utilisateur) {
       return res.status(404).json({
         message: "Code de vérification invalide",
-        error: true,
         success: false
       });
     }
@@ -111,40 +114,35 @@ export async function verifieEmailControleur(req, res) {
     if (utilisateur.emailVerified) {
       return res.status(200).json({
         message: "Email déjà vérifié",
-        success: true,
-        error: false
+        success: true
       });
     }
 
-    await modelUtilisateur.findByIdAndUpdate(code, { 
+    await modelUtilisateur.findByIdAndUpdate(code, {
       emailVerified: true,
-      verifiedAt: new Date() 
+      verifiedAt: new Date()
     });
 
     return res.json({
       message: "Vérification de l'email terminée",
-      success: true,
-      error: false
+      success: true
     });
-
   } catch (error) {
     console.error("Erreur dans verifieEmailControleur:", error);
     return res.status(500).json({
       message: "Erreur serveur lors de la vérification de l'email",
-      error: true,
       success: false
     });
   }
 }
 
-export async function longinControleur(req, res) {
+export async function loginControleur(req, res) {
   try {
     const { email, mot_de_passe } = req.body;
 
     if (!email || !mot_de_passe) {
-        return res.status(400).json({
+      return res.status(400).json({
         message: "Email et mot de passe requis",
-        error: true,
         success: false
       });
     }
@@ -154,7 +152,6 @@ export async function longinControleur(req, res) {
     if (!utilisateur) {
       return res.status(401).json({
         message: "Identifiants invalides",
-        error: true,
         success: false
       });
     }
@@ -162,7 +159,6 @@ export async function longinControleur(req, res) {
     if (!utilisateur.emailVerified) {
       return res.status(403).json({
         message: "Veuillez vérifier votre email avant de vous connecter",
-        error: true,
         success: false
       });
     }
@@ -172,7 +168,6 @@ export async function longinControleur(req, res) {
     if (!motDePasseValide) {
       return res.status(401).json({
         message: "Identifiants invalides",
-        error: true,
         success: false
       });
     }
@@ -191,22 +186,20 @@ export async function longinControleur(req, res) {
 
     return res.json({
       message: "Connexion réussie",
-      error: false,
       success: true,
       data: {
         utilisateur: {
           id: utilisateur._id,
           nom: utilisateur.nom,
-          email: utilisateur.email
+          email: utilisateur.email,
+          role: utilisateur.role
         }
       }
     });
-
   } catch (error) {
     console.error("Erreur dans loginControleur:", error);
     return res.status(500).json({
       message: "Erreur serveur lors de la connexion",
-      error: true,
       success: false
     });
   }
@@ -225,21 +218,18 @@ export async function logoutControleur(req, res) {
     res.clearCookie("accessToken", cookieOptions);
     res.clearCookie("refreshToken", cookieOptions);
 
-  const updatedUser =  await modelUtilisateur.findByIdAndUpdate(utilisateurId, {
+    await modelUtilisateur.findByIdAndUpdate(utilisateurId, {
       refreshToken: ""
     });
 
     return res.json({
       message: "Déconnexion réussie",
-      error: false,
       success: true
     });
-
   } catch (error) {
     console.error("Erreur dans logoutControleur:", error);
     return res.status(500).json({
       message: "Erreur serveur lors de la déconnexion",
-      error: true,
       success: false
     });
   }
@@ -248,12 +238,11 @@ export async function logoutControleur(req, res) {
 export async function updateUserDetails(req, res) {
   try {
     const utilisateurId = req.utilisateurId;
-    const { nom, email, mot_de_passe } = req.body;
+    const { nom, email, mot_de_passe, role } = req.body;
 
-    if (!nom && !email && !mot_de_passe) {
+    if (!nom && !email && !mot_de_passe && !role) {
       return res.status(400).json({
         message: "Aucune donnée à mettre à jour",
-        error: true,
         success: false
       });
     }
@@ -265,17 +254,25 @@ export async function updateUserDetails(req, res) {
       if (!emailRegex.test(email)) {
         return res.status(400).json({
           message: "Format d'email invalide",
-          error: true,
           success: false
         });
       }
       updates.email = email;
       updates.emailVerified = false; // Réinitialiser la vérification si email changé
     }
-
     if (mot_de_passe) {
       const salt = await bcryptjs.genSalt(10);
       updates.mot_de_passe = await bcryptjs.hash(mot_de_passe, salt);
+    }
+    if (role) {
+      const rolesValides = ['admin', 'Responsable'];
+      if (!rolesValides.includes(role)) {
+        return res.status(400).json({
+          message: "Rôle invalide",
+          success: false
+        });
+      }
+      updates.role = role;
     }
 
     const utilisateurMisAJour = await modelUtilisateur.findByIdAndUpdate(
@@ -287,28 +284,24 @@ export async function updateUserDetails(req, res) {
     if (!utilisateurMisAJour) {
       return res.status(404).json({
         message: "Utilisateur non trouvé",
-        error: true,
         success: false
       });
     }
 
     return res.json({
       message: "Informations mises à jour",
-      error: false,
       success: true,
       data: utilisateurMisAJour
     });
-
   } catch (error) {
     console.error("Erreur dans updateUserDetails:", error);
     return res.status(500).json({
       message: "Erreur serveur lors de la mise à jour",
-      error: true,
       success: false
     });
   }
 }
-// forgot password
+
 export async function forgotPasswordControleur(req, res) {
   try {
     const { email } = req.body;
@@ -316,8 +309,7 @@ export async function forgotPasswordControleur(req, res) {
     if (!email) {
       return res.status(400).json({
         message: "Email requis",
-        error: true,
-        success: false,
+        success: false
       });
     }
 
@@ -325,8 +317,7 @@ export async function forgotPasswordControleur(req, res) {
     if (!utilisateur) {
       return res.status(404).json({
         message: "Aucun compte trouvé avec cet email",
-        error: true,
-        success: false,
+        success: false
       });
     }
 
@@ -339,187 +330,188 @@ export async function forgotPasswordControleur(req, res) {
     });
 
     await envoiEmail({
-      to: email,
+      sendTo: email,
       subject: "Réinitialisation de mot de passe - Onix",
       html: forgotmotdepassTemplate({
         nom: utilisateur.nom,
         otp: otp
-      }) // Parenthèse fermante ajoutée ici
+      })
     });
 
     return res.json({
       message: "Un email de réinitialisation a été envoyé",
-      error: false,
-      success: true,
+      success: true
     });
   } catch (error) {
     console.error("Erreur dans forgotPasswordControleur:", error);
     return res.status(500).json({
       message: "Erreur lors de l'envoi du email de réinitialisation",
-      error: true,
-      success: false,
+      success: false
     });
   }
 }
 
-export async function verifyForgotPasswordOtp (req,res){
+export async function verifyForgotPasswordOtp(req, res) {
   try {
-    const { email , otp} = req.body;
-    if(!email || !otp) {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
       return res.status(400).json({
-        message : " fechec de l'email , otp fourni",
-        error: true,
-        success : false
-      })
+        message: "Email et OTP requis",
+        success: false
+      });
     }
 
-    const utilisateur = await modelUtilisateur.findOne({email})
-
-   if (!utilisateur) {
-    ReturnDocument.status(400).json({
-      message:" Email invalide",
-      reror : false,
-      success : true
-    })
-   }
-
-   const TempActuel = new Date()
-
-   if (utilisateur.forgotPasswordOtpExpiry < TempActuel) {
-    return res.status(400).json({
-      message : "Otp expiré",
-      error : true ,
-      success: false
-    })
-   }
-
-   if (otp === utilisateur.forgotPasswordOtp) {
-    return res.status(400).json({
-      message : "Otp invalide", 
-      error : true,
-      success: false
-    })
-   }
-
-   // if otp not expired
-   // otp ===user.forgotpassworgotp
-
-
-   return res.json({
-    message : " otp verifié",
-    error : false,
-    success : true 
-
-   })
-  } catch (error) {
-    return res.status(500).json({
-      message : error.message || error,
-      error : true,
-      success : false
-    })
-  }
-}
-
-export async function  resetpassword(req,res) {
-  try {
-    const {email ,newPassword, confirmPassword } = req.body;
-
-    if(!email || !newPassword || !confirmPassword){
-      return res.status(400).json({
-        message : "fournir email , newoassqword , confirmPassworld"
-      })
-    }
-
-    const utilisateur = await modelUtilisateur.findOne({email})
+    const utilisateur = await modelUtilisateur.findOne({ email });
 
     if (!utilisateur) {
       return res.status(400).json({
-        message : " eamil n'est pas correct ",
-        error : true,
-        success : false
-      })
-      
+        message: "Email invalide",
+        success: false
+      });
     }
-    if (newPassword !== confirmPassword) {
-      return res.status(400).json({
-        message : "le nouveau mot de passe et la confirmatio ne sont pas même ",
-        error : true,
-        success : false
-      })
-    }
-    const halt = await bcryptjs.genSalt(10)
-    const hashMotDePasse = await bcryptjs.hash(newPassword,salt)
 
-    const Update = await modelUtilisateur.findOneAndUpdate(utilisateur._id,{
-      mot_de_passe : hashMotDePasse
-    })
+    const tempsActuel = new Date();
+
+    if (utilisateur.forgotPasswordOtpExpiry < tempsActuel) {
+      return res.status(400).json({
+        message: "OTP expiré",
+        success: false
+      });
+    }
+
+    if (otp !== utilisateur.forgotPasswordOtp) {
+      return res.status(400).json({
+        message: "OTP invalide",
+        success: false
+      });
+    }
+
+    // OTP valide, on peut nettoyer l'OTP après vérification
+    await modelUtilisateur.findByIdAndUpdate(utilisateur._id, {
+      forgotPasswordOtp: null,
+      forgotPasswordOtpExpiry: null
+    });
 
     return res.json({
-      message : " mot de passe modifié",
-      error : false,
-      success : true
-    })
-
+      message: "OTP vérifié",
+      success: true
+    });
   } catch (error) {
+    console.error("Erreur dans verifyForgotPasswordOtp:", error);
     return res.status(500).json({
-      message : error.messaeg ||error,
-      error : true,
-      success : false
-    })
+      message: error.message || "Erreur serveur",
+      success: false
+    });
   }
 }
 
-export async function refreshToken(req,res){
+export async function resetpassword(req, res) {
   try {
-      const refreshToken = req.cookies.refreshToken || req?.header?.authorization?.split(" ")[1]
+    const { email, newpassword, confirmPassword } = req.body;
 
-      if (!refreshToken) {
-        return res.status(401).json({
-          message : "invalide Token",
-          error: true, 
-          success : false
-        })
+    if (!email || !newpassword || !confirmPassword) {
+      return res.status(400).json({
+        message: "Fournir email, nouveau mot de passe et confirmation",
+        success: false
+      });
+    }
+
+    const utilisateur = await modelUtilisateur.findOne({ email });
+
+    if (!utilisateur) {
+      return res.status(400).json({
+        message: "Email incorrect",
+        success: false
+      });
+    }
+
+    if (newpassword !== confirmPassword) {
+      return res.status(400).json({
+        message: "Le nouveau mot de passe et la confirmation ne sont pas identiques",
+        success: false
+      });
+    }
+
+    const salt = await bcryptjs.genSalt(10);
+    const hashMotDePasse = await bcryptjs.hash(newpassword, salt);
+
+    await modelUtilisateur.findOneAndUpdate(
+      { email },
+      {
+        mot_de_passe: hashMotDePasse,
+        forgotPasswordOtp: null,
+        forgotPasswordOtpExpiry: null
       }
+    );
 
-      console.log("refreshToken",refreshToken);
+    return res.json({
+      message: "Mot de passe modifié avec succès",
+      success: true
+    });
+  } catch (error) {
+    console.error("Erreur dans resetpassword:", error);
+    return res.status(500).json({
+      message: error.message || "Erreur serveur",
+      success: false
+    });
+  }
+}
 
-      verifyToken = await  jwt.verify(refreshToken, process.env.SECRET_KEY_REFRESH_TOKEN)
+export async function refreshToken(req, res) {
+  try {
+    const refreshToken = req.cookies.refreshToken || req.headers.authorization?.split(" ")[1];
 
-      if (!verifyToken){
-        return res.status(401).json({
-          message : "Token expiré",
-          error : true,
-          success : false
-        })
-      }
+    if (!refreshToken) {
+      return res.status(401).json({
+        message: "Token invalide",
+        success: false
+      });
+    }
 
-      console.log("verifyToken", verifyToken);
-      const utilisateurId = verifyToken?._id
-      
-      const newAccessToken = await generereaccesToken(utilisateurId)
+    console.log("refreshToken", refreshToken);
 
-        const cookieOptions = {
+    const verifiedToken = await jwt.verify(refreshToken, process.env.SECRET_KEY_REFRESH_TOKEN);
+
+    if (!verifiedToken) {
+      return res.status(401).json({
+        message: "Token expiré",
+        success: false
+      });
+    }
+
+    console.log("verifiedToken", verifiedToken);
+    const utilisateurId = verifiedToken._id;
+
+    const utilisateur = await modelUtilisateur.findById(utilisateurId);
+    if (!utilisateur) {
+      return res.status(401).json({
+        message: "Utilisateur non trouvé",
+        success: false
+      });
+    }
+
+    const newAccessToken = await generereaccesToken(utilisateurId);
+
+    const cookieOptions = {
       httpOnly: true,
       secure: true,
       sameSite: 'None'
     };
 
-
-      res.cookie("accessToken",newAccessToken,cookieOptions)
-       return res.json({
-      message : "Nouveau accès Token généré",
-      error : false,
+    res.cookie("accessToken", newAccessToken, cookieOptions);
+    return res.json({
+      message: "Nouveau token d'accès généré",
       success: true,
-      data :{
-        accessToken : newAccessToken
+      data: {
+        accessToken: newAccessToken
       }
-    })
-
+    });
   } catch (error) {
-   return res.status(500).json({
-      message : error.message || error ,
-      error : true,
-      success: false 
-    })
+    console.error("Erreur dans refreshToken:", error);
+    return res.status(500).json({
+      message: error.message || "Erreur serveur",
+      success: false
+    });
   }
 }
